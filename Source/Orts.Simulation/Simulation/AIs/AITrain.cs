@@ -79,7 +79,9 @@ namespace Orts.Simulation.AIs
         public bool ApproachTriggerSet = false;         // station approach trigger for AI trains has been set
 
         public float PathLength;
-
+        private bool aiPendingStart = false;
+        private float aiPendingStartTimer = 0f;
+        private AI_START_MOVEMENT? aiPendingStartReason = null;
 
         public enum AI_MOVEMENT_STATE
         {
@@ -130,9 +132,13 @@ namespace Orts.Simulation.AIs
         public static float clearingDistanceM = 30.0f;         // clear distance to stopping point
         public static float minStopDistanceM = 3.0f;           // minimum clear distance for stopping at signal in station
         public static float signalApproachDistanceM = 20.0f;   // final approach to signal
-
+        private float aiTrainLeavingStationTimer = -1f;
+        private bool aiTrainLeavingStationEventSent = false;
+        private const float AITrainLeavingStationLeadTime = 10.0f; // seconds before departure to trigger event
         private readonly List<ObjectItemInfo> processedList = new List<ObjectItemInfo>(); // internal processing list for CheckSignalObjects()
 
+        private float aiStartMovingElapsed = 0f;
+        private bool aiStartMovingActive = false;
 #if WITH_PATH_DEBUG
         //  Only for EnhancedActCompatibility
         public string currentAIState = "";
@@ -1565,6 +1571,19 @@ namespace Orts.Simulation.AIs
             var AuxActionnextActionInfo = nextActionInfo;
             var tryBraking = true;
 
+            if (aiPendingStart)
+            {
+                aiPendingStartTimer -= elapsedClockSeconds;
+                if (aiPendingStartTimer <= 0f && aiPendingStartReason.HasValue)
+                {
+                    aiPendingStart = false;
+                    var reason = aiPendingStartReason.Value;
+                    aiPendingStartReason = null;
+                    StartMovingImmediate(reason); // Use the gated method, not StartMovingImmediate
+                }
+                return MovementState;
+            }
+
             // TODO: Can we merge these two conditions?
             if (SpeedMpS > 0) // If train still running force it to stop
             {
@@ -1581,6 +1600,8 @@ namespace Orts.Simulation.AIs
                 Update(0); // Stop the wheels from moving etc
                 AITrainThrottlePercent = 0;
                 AITrainBrakePercent = 100;
+                aiStartMovingActive = false;
+                aiStartMovingElapsed = 0f;
             }
 
             // Check if there's a train ahead - if so, determine speed and distance
@@ -1903,7 +1924,9 @@ namespace Orts.Simulation.AIs
                         DoorOpenTimer = 0;
                         DoorCloseTimer = Math.Max (stopTime - 3, 0);
                     }
-
+                    // --- Event timer logic with safety check ---
+                    aiTrainLeavingStationTimer = PreUpdate ? 0 : (stopTime <= AITrainLeavingStationLeadTime ? 0 : stopTime - AITrainLeavingStationLeadTime);
+                    aiTrainLeavingStationEventSent = false;
 #if DEBUG_REPORTS
                     DateTime baseDT = new DateTime();
                     DateTime arrTime = baseDT.AddSeconds(presentTime);
@@ -1965,6 +1988,17 @@ namespace Orts.Simulation.AIs
                                 }
                             }
                         }
+                        if (!aiTrainLeavingStationEventSent && aiTrainLeavingStationTimer >= 0)
+                        {
+                            aiTrainLeavingStationTimer -= elapsedClockSeconds;
+                            if (aiTrainLeavingStationTimer < 0)
+                            {
+                                if (Cars[0] is MSTSLocomotive)
+                                    Cars[0].SignalEvent(Event.AITrainLeavingStation);
+                                aiTrainLeavingStationEventSent = true;
+                            }
+                        }
+
                     }
                 }
             }
@@ -2106,7 +2140,7 @@ namespace Orts.Simulation.AIs
                 }
                 Delay = TimeSpan.FromSeconds((presentTime - thisStation.DepartTime) % (24 * 3600));
             }
-            if (Cars[0] is MSTSLocomotive) Cars[0].SignalEvent(Event.AITrainLeavingStation);
+            //if (Cars[0] is MSTSLocomotive) Cars[0].SignalEvent(Event.AITrainLeavingStation);
 
 #if DEBUG_REPORTS
             DateTime baseDTd = new DateTime();
@@ -2977,12 +3011,42 @@ namespace Orts.Simulation.AIs
         /// </summary>
         public virtual void UpdateAccelState(float elapsedClockSeconds)
         {
+            if (SpeedMpS > 0.1f)
+            {
+                aiStartMovingElapsed = 0f;
+                aiStartMovingActive = true;
+            }
+            // If just started moving, accumulate time
+            if (aiStartMovingActive)
+            {
+                aiStartMovingElapsed += elapsedClockSeconds;
+                // If speed exceeds 10 km/h, or time exceeds 8 seconds, stop limiting
+                if (SpeedMpS >= 15.0f / 3.6f || aiStartMovingElapsed >= 15.0f)
+                {
+                    aiStartMovingActive = false;
+                }
+            }
+
             // Check speed
             if (((SpeedMpS - LastSpeedMpS) / elapsedClockSeconds) < 0.5f * MaxAccelMpSS)
             {
-                int stepSize = (!PreUpdate) ? 10 : 40;
-                float corrFactor = (!PreUpdate) ? 0.5f : 1.0f;
-                AdjustControlsAccelMore(Efficiency * corrFactor * MaxAccelMpSS, elapsedClockSeconds, stepSize);
+
+
+                // Limit acceleration if in the slow start phase
+                if (aiStartMovingActive)
+                {
+                    int stepSize = (!PreUpdate) ? 1 : 30;
+                    float corrFactor = (!PreUpdate) ? 0.07f : 1.0f;
+                    // Calculate a gentle acceleration: a = v / t = (7/3.6) / 6 ≈ 0.32 m/s²
+                    float gentleAccel = (15.0f / 3.6f) / 15.0f;
+                    AdjustControlsAccelMore(Math.Min(Efficiency * corrFactor * MaxAccelMpSS, gentleAccel), elapsedClockSeconds, stepSize);
+                }
+                else
+                {
+                    int stepSize = (!PreUpdate) ? 2 : 40;
+                    float corrFactor = (!PreUpdate) ? 1f : 1.0f;
+                    AdjustControlsAccelMore(Efficiency * corrFactor * MaxAccelMpSS, elapsedClockSeconds, stepSize);
+                }
             }
 
             if (SpeedMpS > (AllowedMaxSpeedMpS - ((9.0f - (6.0f * Efficiency)) * hysterisMpS)))
@@ -3493,11 +3557,14 @@ namespace Orts.Simulation.AIs
         }
 
         //================================================================================================//
-        /// <summary>
-        /// Start Moving
-        /// </summary>
-        public virtual void StartMoving(AI_START_MOVEMENT reason)
+
+        private void StartMovingImmediate(AI_START_MOVEMENT reason)
         {
+            if (SpeedMpS > 0.1f)
+            {
+                aiStartMovingElapsed = 0f;
+                aiStartMovingActive = true;
+            }
             // Reset brakes, set throttle
             if (reason == AI_START_MOVEMENT.FOLLOW_TRAIN)
             {
@@ -3531,6 +3598,31 @@ namespace Orts.Simulation.AIs
             }
 
             SetPercentsFromTrainToTrainset();
+        }
+        /// <summary>
+        /// Start Moving
+        /// </summary>
+        public  virtual void StartMoving(AI_START_MOVEMENT reason)
+        {
+            // Only gate if train is stopped and not already pending
+            if (SpeedMpS < 0.1f && !aiPendingStart)
+            {
+                // Send horn/trigger event
+                if (Cars[0] is MSTSLocomotive loco)
+                    loco.SignalEvent(Event.AITrainLeavingStation);
+
+                aiPendingStart = true;
+                aiPendingStartTimer = 10.0f; // 5 seconds wait
+                aiPendingStartReason = reason;
+                return; // Do not start moving yet
+            }
+
+            // If already pending, do nothing (wait for timer in UpdateStoppedState)
+            if (aiPendingStart)
+                return;
+
+            // Otherwise, proceed with normal start logic
+            StartMovingImmediate(reason);
         }
 
         //================================================================================================//
