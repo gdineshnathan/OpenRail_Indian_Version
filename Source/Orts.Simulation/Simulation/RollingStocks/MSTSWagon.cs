@@ -181,38 +181,32 @@ namespace Orts.Simulation.RollingStocks
 
         // Colours for smoke and steam effects
         public Color ExhaustTransientColor = Color.Black;
-        public Color ExhaustDecelColor = Color.WhiteSmoke;
-        public Color ExhaustSteadyColor = Color.Gray;
+        public Color ExhaustDecelColor = new Color(Color.WhiteSmoke, 63);
+        public Color ExhaustSteadyColor = new Color(Color.Gray, 127);
 
         // Wagon steam leaks
         public float HeatingHoseParticleDurationS;
         public float HeatingHoseSteamVelocityMpS;
-        public float HeatingHoseSteamVolumeM3pS;
 
         // Wagon heating compartment steamtrap leaks
         public float HeatingCompartmentSteamTrapParticleDurationS;
         public float HeatingCompartmentSteamTrapVelocityMpS;
-        public float HeatingCompartmentSteamTrapVolumeM3pS;
 
         // Wagon heating steamtrap leaks
         public float HeatingMainPipeSteamTrapDurationS;
         public float HeatingMainPipeSteamTrapVelocityMpS;
-        public float HeatingMainPipeSteamTrapVolumeM3pS;
 
         // Steam Brake leaks
         public float SteamBrakeLeaksDurationS;
         public float SteamBrakeLeaksVelocityMpS;
-        public float SteamBrakeLeaksVolumeM3pS;
 
         // Water Scoop Spray
         public float WaterScoopParticleDurationS;
         public float WaterScoopWaterVelocityMpS;
-        public float WaterScoopWaterVolumeM3pS;
 
         // Tender Water overflow
         public float TenderWaterOverflowParticleDurationS;
         public float TenderWaterOverflowVelocityMpS;
-        public float TenderWaterOverflowVolumeM3pS;
 
         // Wagon Power Generator
         public float WagonGeneratorDurationS = 1.5f;
@@ -226,20 +220,17 @@ namespace Orts.Simulation.RollingStocks
         public bool HeatingBoilerSet = false;
 
         // Wagon Smoke
-        public float WagonSmokeVolumeM3pS;
-        float InitialWagonSmokeVolumeM3pS = 3.0f;
         public float WagonSmokeDurationS;
         float InitialWagonSmokeDurationS = 1.0f;
-        public float WagonSmokeVelocityMpS = 15.0f;
+        public float WagonSmokeVelocityMpS = 1.5f;
         public Color WagonSmokeSteadyColor = Color.Gray;
 
         float TrueCouplerCount = 0;
         int CouplerCountLocation;
 
         // Bearing Hot Box Smoke
-        public float BearingHotBoxSmokeVolumeM3pS;
         public float BearingHotBoxSmokeDurationS;
-        public float BearingHotBoxSmokeVelocityMpS = 15.0f;
+        public float BearingHotBoxSmokeVelocityMpS = 1.5f;
         public Color BearingHotBoxSmokeSteadyColor = Color.Gray;
         List<string> BrakeEquipment = new List<string>();
 
@@ -453,88 +444,111 @@ namespace Orts.Simulation.RollingStocks
             }
 
             // If requested, use the shape file to determine the size of the wagon
-            if ((AutoSize || AutoCenter) && !string.IsNullOrEmpty(MainShapeFileName))
+            bool manualBounds = ShapeBoundingLimits.Mins != Vector3.Zero || ShapeBoundingLimits.Maxes != Vector3.Zero;
+
+            if ((AutoSize || AutoCenter) && (!string.IsNullOrEmpty(MainShapeFileName) || manualBounds))
             {
                 try // Shape file discrepancies might cause errors, we don't want to cause a crash here
                 {
                     // This might be a bad idea, usually we wait to deal with shape files until within viewing range
-                    // But my hubris has decided we can use for the shape for things other than graphics - Phillip
+                    // The additional shape file loading necessarily adds to computation and memory load, but only initially - Phillip
                     ShapeFile wagShape = new ShapeFile(wagonFolderSlash + MainShapeFileName, true);
 
-                    (Vector3 mainMins, Vector3 mainMaxes) = wagShape.GetBoundingLimits();
+                    (Vector3 mainMins, Vector3 mainMaxes) = ShapeBoundingLimits;
 
-                    bool mstsFreightAnim = true;
-
-                    // And also repeat for ORTS freight animations
-                    if (FreightAnimations != null)
+                    if (!manualBounds)
                     {
-                        if (!FreightAnimations.MSTSFreightAnimEnabled)
-                            mstsFreightAnim = false;
+                        (mainMins, mainMaxes) = wagShape.GetBoundingLimits();
 
-                        foreach (var freightAnim in FreightAnimations.Animations)
+                        bool mstsFreightAnim = true;
+
+                        // And also repeat for ORTS freight animations
+                        if (FreightAnimations != null)
                         {
-                            // We will ignore freight animations not attached to the main shape object for simplicity
-                            if (!string.IsNullOrEmpty(freightAnim.ShapeFileName) && freightAnim.ShapeIndex <= 0 && string.IsNullOrEmpty(freightAnim.ShapeHierarchy))
+                            if (!FreightAnimations.MSTSFreightAnimEnabled)
+                                mstsFreightAnim = false;
+
+                            foreach (var freightAnim in FreightAnimations.Animations)
                             {
-                                ShapeFile ortsFreightShape = new ShapeFile(wagonFolderSlash + freightAnim.ShapeFileName, true);
-
-                                (Vector3 ortsFreightMins, Vector3 ortsFreightMaxes) = ortsFreightShape.GetBoundingLimits();
-
-                                // Account for flipped freight animation by inverting x and z components
-                                if (freightAnim.Flipped)
+                                // We will ignore freight animations not attached to the main shape object for simplicity
+                                if (!string.IsNullOrEmpty(freightAnim.ShapeFileName) && freightAnim.ShapeIndex <= 0 && string.IsNullOrEmpty(freightAnim.ShapeHierarchy))
                                 {
-                                    Vector3 temp = ortsFreightMins;
-                                    temp.X *= -1;
-                                    temp.Y = ortsFreightMaxes.Y;
-                                    temp.Z *= -1;
+                                    ShapeFile ortsFreightShape = new ShapeFile(wagonFolderSlash + freightAnim.ShapeFileName, true);
 
-                                    ortsFreightMaxes.X *= -1;
-                                    ortsFreightMaxes.Y = ortsFreightMins.Y;
-                                    ortsFreightMaxes.Z *= -1;
+                                    (Vector3 ortsFreightMins, Vector3 ortsFreightMaxes) = ortsFreightShape.GetBoundingLimits();
 
-                                    ortsFreightMins = ortsFreightMaxes;
-                                    ortsFreightMaxes = temp;
+                                    // Account for flipped freight animation by inverting x and z components
+                                    if (freightAnim.Flipped)
+                                    {
+                                        Vector3 temp = ortsFreightMins;
+                                        temp.X *= -1;
+                                        temp.Y = ortsFreightMaxes.Y;
+                                        temp.Z *= -1;
+
+                                        ortsFreightMaxes.X *= -1;
+                                        ortsFreightMaxes.Y = ortsFreightMins.Y;
+                                        ortsFreightMaxes.Z *= -1;
+
+                                        ortsFreightMins = ortsFreightMaxes;
+                                        ortsFreightMaxes = temp;
+                                    }
+
+                                    // Account for offsets
+                                    // Z-axis offset is inverted to match MSTS coordinate system
+                                    Vector3 modOffset = new Vector3(freightAnim.Offset.X, freightAnim.Offset.Y, -freightAnim.Offset.Z);
+                                    ortsFreightMins += modOffset;
+                                    ortsFreightMaxes += modOffset;
+
+                                    mainMins = Vector3.Min(mainMins, ortsFreightMins);
+                                    mainMaxes = Vector3.Max(mainMaxes, ortsFreightMaxes);
                                 }
-
-                                // Account for offsets
-                                // Z-axis offset is inverted to match MSTS coordinate system
-                                Vector3 modOffset = new Vector3(freightAnim.Offset.X, freightAnim.Offset.Y, -freightAnim.Offset.Z);
-                                ortsFreightMins += modOffset;
-                                ortsFreightMaxes += modOffset;
-
-                                mainMins = Vector3.Min(mainMins, ortsFreightMins);
-                                mainMaxes = Vector3.Max(mainMaxes, ortsFreightMaxes);
                             }
                         }
-                    }
 
-                    // And also repeat for MSTS freight animation bounds (if enabled)
-                    if (mstsFreightAnim && !string.IsNullOrEmpty(FreightShapeFileName))
-                    {
-                        ShapeFile freightShape = new ShapeFile(wagonFolderSlash + FreightShapeFileName, true);
+                        // And also repeat for MSTS freight animation bounds (if enabled)
+                        if (mstsFreightAnim && !string.IsNullOrEmpty(FreightShapeFileName))
+                        {
+                            ShapeFile freightShape = new ShapeFile(wagonFolderSlash + FreightShapeFileName, true);
 
-                        (Vector3 freightMins, Vector3 freightMaxes) = freightShape.GetBoundingLimits();
+                            (Vector3 freightMins, Vector3 freightMaxes) = freightShape.GetBoundingLimits();
 
-                        // MSTS freight animations don't have offsets, so can be simply compared
-                        mainMins = Vector3.Min(mainMins, freightMins);
-                        mainMaxes = Vector3.Max(mainMaxes, freightMaxes);
+                            // MSTS freight animations don't have offsets, so can be simply compared
+                            mainMins = Vector3.Min(mainMins, freightMins);
+                            mainMaxes = Vector3.Max(mainMaxes, freightMaxes);
+                        }
                     }
 
                     // Set dimensions of wagon if configured as such
                     if (AutoSize)
                     {
-                        CarWidthM = Math.Max((mainMaxes.X - mainMins.X) + AutoWidthOffsetM, 0.1f);
-                        CarHeightM = Math.Max((mainMaxes.Y - mainMins.Y) + AutoHeightOffsetM, 0.1f);
-                        CarLengthM = Math.Max((mainMaxes.Z - mainMins.Z) + AutoLengthOffsetM, 0.1f);
+                        CarWidthM = Math.Max((mainMaxes.X - mainMins.X) + AutoSizeOffsetM.X, 0.1f);
+                        CarHeightM = Math.Max((mainMaxes.Y - mainMins.Y) + AutoSizeOffsetM.Y, 0.1f);
+                        CarLengthM = Math.Max((mainMaxes.Z - mainMins.Z) + AutoSizeOffsetM.Z, 0.1f);
 
                         if (Simulator.Settings.VerboseConfigurationMessages)
                         {
                             Trace.TraceInformation("Rolling stock {0} size automatically calculated using ORTSAutoSize ( {1}, {2}, {3} ).", shortPath,
-                                FormatStrings.FormatVeryShortDistanceDisplay(AutoWidthOffsetM, IsMetric),
-                                FormatStrings.FormatVeryShortDistanceDisplay(AutoHeightOffsetM, IsMetric),
-                                FormatStrings.FormatVeryShortDistanceDisplay(AutoLengthOffsetM, IsMetric));
-                            Trace.TraceInformation("Main shape file {0} calculated to be {1} wide, {2} tall, and {3} long. " +
-                                "Resulting Size ( ) is {4} wide, {5} tall, and {6} long.\n", MainShapeFileName,
+                                FormatStrings.FormatVeryShortDistanceDisplay(AutoSizeOffsetM.X, IsMetric),
+                                FormatStrings.FormatVeryShortDistanceDisplay(AutoSizeOffsetM.Y, IsMetric),
+                                FormatStrings.FormatVeryShortDistanceDisplay(AutoSizeOffsetM.Z, IsMetric));
+                            if (!manualBounds) // Inform user of bounding limits only if calculated automatically
+                                Trace.TraceInformation("Overall 3D model bounds calculated to be Min X: {0}, Min Y: {1}, Min Z: {2}, " +
+                                    "Max X: {3}, Max Y: {4}, Max Z: {5}.\nTo skip calculation next time, enter " +
+                                    "ORTSShapeBounds ( {6} {7} {8} {9} {10} {11} ) in the Wagon() section.",
+                                    FormatStrings.FormatVeryShortDistanceDisplay(mainMins.X, IsMetric),
+                                    FormatStrings.FormatVeryShortDistanceDisplay(mainMins.Y, IsMetric),
+                                    FormatStrings.FormatVeryShortDistanceDisplay(mainMins.Z, IsMetric),
+                                    FormatStrings.FormatVeryShortDistanceDisplay(mainMaxes.X, IsMetric),
+                                    FormatStrings.FormatVeryShortDistanceDisplay(mainMaxes.Y, IsMetric),
+                                    FormatStrings.FormatVeryShortDistanceDisplay(mainMaxes.Z, IsMetric),
+                                    String.Format("{0:N3}", mainMins.X),
+                                    String.Format("{0:N3}", mainMins.Y),
+                                    String.Format("{0:N3}", mainMins.Z),
+                                    String.Format("{0:N3}", mainMaxes.X),
+                                    String.Format("{0:N3}", mainMaxes.Y),
+                                    String.Format("{0:N3}", mainMaxes.Z));
+                            Trace.TraceInformation("Overall 3D model size calculated to be {0} wide, {1} tall, and {2} long. " +
+                                "Resulting Size ( ) is {3} wide, {4} tall, and {5} long.\n",
                                 FormatStrings.FormatVeryShortDistanceDisplay((mainMaxes.X - mainMins.X), IsMetric),
                                 FormatStrings.FormatVeryShortDistanceDisplay((mainMaxes.Y - mainMins.Y), IsMetric),
                                 FormatStrings.FormatVeryShortDistanceDisplay((mainMaxes.Z - mainMins.Z), IsMetric),
@@ -553,13 +567,11 @@ namespace Orts.Simulation.RollingStocks
                         {
                             Trace.TraceInformation("Rolling stock {0} CoG z-value automatically calculated using ORTSAutoCenter.", shortPath);
                             if (Math.Abs(InitialCentreOfGravityM.Z) < 0.0001f)
-                                Trace.TraceInformation("Main shape file {0} bounds calculated to be {1} to {2}. Shape is already centered, CoG offset reset to zero.\n",
-                                    MainShapeFileName,
+                                Trace.TraceInformation("Overall 3D model bounds calculated to be {0} to {1}. Shape is already centered, CoG offset reset to zero.\n",
                                     FormatStrings.FormatVeryShortDistanceDisplay(mainMins.Z, IsMetric),
                                     FormatStrings.FormatVeryShortDistanceDisplay(mainMaxes.Z, IsMetric));
                             else
-                                Trace.TraceInformation("Main shape file {0} bounds calculated to be {1} to {2}. CoG offset used to center shape is {3}.\n",
-                                    MainShapeFileName,
+                                Trace.TraceInformation("Overall 3D model bounds calculated to be {0} to {1}. CoG offset used to center shape is {2}.\n",
                                     FormatStrings.FormatVeryShortDistanceDisplay(mainMins.Z, IsMetric),
                                     FormatStrings.FormatVeryShortDistanceDisplay(mainMaxes.Z, IsMetric),
                                     FormatStrings.FormatVeryShortDistanceDisplay(InitialCentreOfGravityM.Z, IsMetric));
@@ -829,7 +841,7 @@ namespace Orts.Simulation.RollingStocks
                 {
                     if (ortsFreightAnim.ShapeFileName != null && !File.Exists(wagonFolderSlash + ortsFreightAnim.ShapeFileName))
                     {
-                        Trace.TraceWarning("ORTS FreightAnim in trainset {0} references non-existent shape {1}", file, wagonFolderSlash + ortsFreightAnim.ShapeFileName);
+                        Trace.TraceWarning("ORTS FreightAnim in trainset {0} references non-existent shape {1}", shortPath, wagonFolderSlash + ortsFreightAnim.ShapeFileName);
                         ortsFreightAnim.ShapeFileName = null;
                     }
 
@@ -1399,11 +1411,20 @@ namespace Orts.Simulation.RollingStocks
                     break;
                 case "wagon(ortsautosize":
                     AutoSize = true;
+                    AutoSizeOffsetM = stf.ReadVector3Block(STFReader.UNITS.Distance, Vector3.Zero);
+                    break;
+                case "wagon(ortsshapebounds":
                     stf.MustMatch("(");
-                    AutoWidthOffsetM = stf.ReadFloat(STFReader.UNITS.Distance, null);
-                    AutoHeightOffsetM = stf.ReadFloat(STFReader.UNITS.Distance, null);
-                    AutoLengthOffsetM = stf.ReadFloat(STFReader.UNITS.Distance, null);
+                    ShapeBoundingLimits.Mins = stf.ReadVector3(STFReader.UNITS.Distance, Vector3.Zero);
+                    ShapeBoundingLimits.Maxes = stf.ReadVector3(STFReader.UNITS.Distance, Vector3.Zero);
                     stf.SkipRestOfBlock();
+                    // Sanity check for correct order of values
+                    if (ShapeBoundingLimits.Maxes.X < ShapeBoundingLimits.Mins.X)
+                        (ShapeBoundingLimits.Maxes.X, ShapeBoundingLimits.Mins.X) = (ShapeBoundingLimits.Mins.X, ShapeBoundingLimits.Maxes.X);
+                    if (ShapeBoundingLimits.Maxes.Y < ShapeBoundingLimits.Mins.Y)
+                        (ShapeBoundingLimits.Maxes.Y, ShapeBoundingLimits.Mins.Y) = (ShapeBoundingLimits.Mins.Y, ShapeBoundingLimits.Maxes.Y);
+                    if (ShapeBoundingLimits.Maxes.Z < ShapeBoundingLimits.Mins.Z)
+                        (ShapeBoundingLimits.Maxes.Z, ShapeBoundingLimits.Mins.Z) = (ShapeBoundingLimits.Mins.Z, ShapeBoundingLimits.Maxes.Z);
                     break;
                 case "wagon(ortsfrontarticulation": FrontArticulation = stf.ReadIntBlock(null); break;
                 case "wagon(ortsreararticulation": RearArticulation = stf.ReadIntBlock(null); break;
@@ -1426,19 +1447,28 @@ namespace Orts.Simulation.RollingStocks
                     break;
                 case "wagon(centerofgravity":
                 case "wagon(centreofgravity":
-                    InitialCentreOfGravityM = stf.ReadVector3Block(STFReader.UNITS.Distance, Vector3.Zero);
-                    if (Math.Abs(InitialCentreOfGravityM.Z) > 2)
+                    stf.MustMatch("(");
+                    float initialValue = stf.ReadFloat(STFReader.UNITS.Distance, 0);
+                    if (!stf.EndOfBlock()) // User has entered a 3-d vector
                     {
-                        STFException.TraceWarning(stf, string.Format("CentreOfGravity Z set to zero because value {0} outside range -2 to +2", InitialCentreOfGravityM.Z));
-                        InitialCentreOfGravityM.Z = 0;
+                        InitialCentreOfGravityM.X = initialValue;
+                        InitialCentreOfGravityM.Y = stf.ReadFloat(STFReader.UNITS.Distance, 0);
+                        InitialCentreOfGravityM.Z = stf.ReadFloat(STFReader.UNITS.Distance, 0);
+
+                        if (Math.Abs(InitialCentreOfGravityM.Z) > 2)
+                        {
+                            STFException.TraceWarning(stf, string.Format("CentreOfGravity Z set to zero because value {0} outside range -2 to +2", InitialCentreOfGravityM.Z));
+                            InitialCentreOfGravityM.Z = 0;
+                        }
+
+                        stf.SkipRestOfBlock();
+                    }
+                    else // User has entered a single value, only set the Y component to this value, leave other components unchanged
+                    {
+                        InitialCentreOfGravityM.Y = initialValue;
                     }
                     break;
-                case "wagon(ortscenterofgravity_x":
-                case "wagon(ortscentreofgravity_x": InitialCentreOfGravityM.X = stf.ReadFloatBlock(STFReader.UNITS.Distance, null); break;
-                case "wagon(ortscenterofgravity_y":
-                case "wagon(ortscentreofgravity_y": InitialCentreOfGravityM.Y = stf.ReadFloatBlock(STFReader.UNITS.Distance, null); break;
-                case "wagon(ortscenterofgravity_z":
-                case "wagon(ortscentreofgravity_z": InitialCentreOfGravityM.Z = stf.ReadFloatBlock(STFReader.UNITS.Distance, null); break;
+                case "wagon(ortsshapenudge": InitialCentreOfGravityM.Z = stf.ReadFloatBlock(STFReader.UNITS.Distance, null); break;
                 case "wagon(ortsautocentre":
                 case "wagon(ortsautocenter": AutoCenter = stf.ReadBoolBlock(true); break;
                 case "wagon(ortsunbalancedsuperelevation": MaxUnbalancedSuperElevationM = stf.ReadFloatBlock(STFReader.UNITS.Distance, null); break;
@@ -1825,6 +1855,8 @@ namespace Orts.Simulation.RollingStocks
             CarWidthM = copy.CarWidthM;
             CarHeightM = copy.CarHeightM;
             CarLengthM = copy.CarLengthM;
+            FrontArticulation = copy.FrontArticulation;
+            RearArticulation = copy.RearArticulation;
             TrackGaugeM = copy.TrackGaugeM;
             CentreOfGravityM = copy.CentreOfGravityM;
             MaxUnbalancedSuperElevationM = copy.MaxUnbalancedSuperElevationM;
@@ -3323,14 +3355,12 @@ namespace Orts.Simulation.RollingStocks
                 // Turn on smoke effects for bearing hot box
                 BearingHotBoxSmokeDurationS = 1;
                 BearingHotBoxSmokeVelocityMpS = 10.0f;
-                BearingHotBoxSmokeVolumeM3pS = 1.5f;
             }
             else if (WheelBearingTemperatureDegC < 50)
             {
                 // Turn off smoke effects for hot boxs
                 BearingHotBoxSmokeDurationS = 0;
                 BearingHotBoxSmokeVelocityMpS = 0;
-                BearingHotBoxSmokeVolumeM3pS = 0;
             }
 
         }
@@ -3607,15 +3637,13 @@ namespace Orts.Simulation.RollingStocks
                 {
                     // Turn wagon steam leaks on 
                     HeatingHoseParticleDurationS = 0.75f;
-                    HeatingHoseSteamVelocityMpS = 15.0f;
-                    HeatingHoseSteamVolumeM3pS = 4.0f * SteamHoseLeakRateRandom;
+                    HeatingHoseSteamVelocityMpS = 3.0f * SteamHoseLeakRateRandom;
                 }
                 else
                 {
                     // Turn wagon steam leaks off 
                     HeatingHoseParticleDurationS = 0.0f;
                     HeatingHoseSteamVelocityMpS = 0.0f;
-                    HeatingHoseSteamVolumeM3pS = 0.0f;
                 }
 
                 // Update Heating main pipe steam trap leaks Information
@@ -3623,15 +3651,13 @@ namespace Orts.Simulation.RollingStocks
                 {
                     // Turn wagon steam leaks on 
                     HeatingMainPipeSteamTrapDurationS = 0.75f;
-                    HeatingMainPipeSteamTrapVelocityMpS = 15.0f;
-                    HeatingMainPipeSteamTrapVolumeM3pS = 8.0f;
+                    HeatingMainPipeSteamTrapVelocityMpS = 3.0f;
                 }
                 else
                 {
                     // Turn wagon steam leaks off 
                     HeatingMainPipeSteamTrapDurationS = 0.0f;
                     HeatingMainPipeSteamTrapVelocityMpS = 0.0f;
-                    HeatingMainPipeSteamTrapVolumeM3pS = 0.0f;
                 }
 
                 // Update Heating compartment steam trap leaks Information
@@ -3639,15 +3665,13 @@ namespace Orts.Simulation.RollingStocks
                 {
                     // Turn wagon steam leaks on 
                     HeatingCompartmentSteamTrapParticleDurationS = 0.75f;
-                    HeatingCompartmentSteamTrapVelocityMpS = 15.0f;
-                    HeatingCompartmentSteamTrapVolumeM3pS = 4.0f;
+                    HeatingCompartmentSteamTrapVelocityMpS = 3.0f;
                 }
                 else
                 {
                     // Turn wagon steam leaks off 
                     HeatingCompartmentSteamTrapParticleDurationS = 0.0f;
                     HeatingCompartmentSteamTrapVelocityMpS = 0.0f;
-                    HeatingCompartmentSteamTrapVolumeM3pS = 0.0f;
                 }
 
                 // Update Water Scoop Spray Information when scoop is down and filling from trough
@@ -3687,12 +3711,10 @@ namespace Orts.Simulation.RollingStocks
                         {
                             float InitialTenderWaterOverflowParticleDurationS = 1.25f;
                             float InitialTenderWaterOverflowVelocityMpS = 50.0f;
-                            float InitialTenderWaterOverflowVolumeM3pS = 10.0f;
 
                             // Turn tender water overflow on - changes due to speed of train
                             TenderWaterOverflowParticleDurationS = InitialTenderWaterOverflowParticleDurationS * SpeedRatio;
                             TenderWaterOverflowVelocityMpS = InitialTenderWaterOverflowVelocityMpS * SpeedRatio;
-                            TenderWaterOverflowVolumeM3pS = InitialTenderWaterOverflowVolumeM3pS * SpeedRatio;
                         }
                     }
                     else
@@ -3700,7 +3722,6 @@ namespace Orts.Simulation.RollingStocks
                         // Turn tender water overflow off 
                         TenderWaterOverflowParticleDurationS = 0.0f;
                         TenderWaterOverflowVelocityMpS = 0.0f;
-                        TenderWaterOverflowVolumeM3pS = 0.0f;
                     }
 
                     // Water scoop spray effects control - always on when scoop over trough, regardless of whether above minimum speed or not
@@ -3710,7 +3731,6 @@ namespace Orts.Simulation.RollingStocks
 
                         float InitialWaterScoopParticleDurationS = 1.25f;
                         float InitialWaterScoopWaterVelocityMpS = 50.0f;
-                        float InitialWaterScoopWaterVolumeM3pS = 10.0f;
 
                         // Turn water scoop spray effects on
                         if (AbsSpeedMpS <= MpS.FromMpH(10))
@@ -3719,7 +3739,6 @@ namespace Orts.Simulation.RollingStocks
                             SpeedRatio = (SprayDecay * AbsSpeedMpS) / MpS.FromMpH(100); // Decrease the water scoop spray effect to minimum level of visibility
                             WaterScoopParticleDurationS = InitialWaterScoopParticleDurationS * SpeedRatio;
                             WaterScoopWaterVelocityMpS = InitialWaterScoopWaterVelocityMpS * SpeedRatio;
-                            WaterScoopWaterVolumeM3pS = InitialWaterScoopWaterVolumeM3pS * SpeedRatio;
 
                         }
                         // Below 25mph effect does not vary, above 25mph effect varies according to speed
@@ -3728,14 +3747,12 @@ namespace Orts.Simulation.RollingStocks
                             SpeedRatio = MpS.FromMpH(25) / MpS.FromMpH(100); // Hold the water scoop spray effect to a minimum level of visibility
                             WaterScoopParticleDurationS = InitialWaterScoopParticleDurationS * SpeedRatio;
                             WaterScoopWaterVelocityMpS = InitialWaterScoopWaterVelocityMpS * SpeedRatio;
-                            WaterScoopWaterVolumeM3pS = InitialWaterScoopWaterVolumeM3pS * SpeedRatio;
                         }
                         else
                         {
                             // Allow water sccop spray effect to vary with speed
                             WaterScoopParticleDurationS = InitialWaterScoopParticleDurationS * SpeedRatio;
                             WaterScoopWaterVelocityMpS = InitialWaterScoopWaterVelocityMpS * SpeedRatio;
-                            WaterScoopWaterVolumeM3pS = InitialWaterScoopWaterVolumeM3pS * SpeedRatio;
                         }
                     }
                     else
@@ -3743,7 +3760,6 @@ namespace Orts.Simulation.RollingStocks
                         // Turn water scoop spray effects off 
                         WaterScoopParticleDurationS = 0.0f;
                         WaterScoopWaterVelocityMpS = 0.0f;
-                        WaterScoopWaterVolumeM3pS = 0.0f;
 
                     }
 
@@ -3757,15 +3773,13 @@ namespace Orts.Simulation.RollingStocks
                         {
                             // Turn steam brake leaks on 
                             SteamBrakeLeaksDurationS = 0.75f;
-                            SteamBrakeLeaksVelocityMpS = 15.0f;
-                            SteamBrakeLeaksVolumeM3pS = 4.0f * SteamBrakeLeakRate;
+                            SteamBrakeLeaksVelocityMpS = 3.0f * SteamBrakeLeakRate;
                         }
                         else
                         {
                             // Turn steam brake leaks off 
                             SteamBrakeLeaksDurationS = 0.0f;
                             SteamBrakeLeaksVelocityMpS = 0.0f;
-                            SteamBrakeLeaksVolumeM3pS = 0.0f;
                         }
 
                         if (WagonType == WagonTypes.Tender)
@@ -3778,15 +3792,13 @@ namespace Orts.Simulation.RollingStocks
                             {
                                 // Turn steam brake leaks on 
                                 SteamBrakeLeaksDurationS = 0.75f;
-                                SteamBrakeLeaksVelocityMpS = 15.0f;
-                                SteamBrakeLeaksVolumeM3pS = 4.0f * SteamBrakeLeakRate;
+                                SteamBrakeLeaksVelocityMpS = 3.0f * SteamBrakeLeakRate;
                             }
                             else
                             {
                                 // Turn steam brake leaks off 
                                 SteamBrakeLeaksDurationS = 0.0f;
                                 SteamBrakeLeaksVelocityMpS = 0.0f;
-                                SteamBrakeLeaksVolumeM3pS = 0.0f;
                             }
                         }
                     }
@@ -3794,7 +3806,6 @@ namespace Orts.Simulation.RollingStocks
             }
 
             WagonSmokeDurationS = InitialWagonSmokeDurationS;
-            WagonSmokeVolumeM3pS = InitialWagonSmokeVolumeM3pS;
         }
 
         public override void SignalEvent(Event evt)
@@ -4897,24 +4908,133 @@ public void SetTensionStiffness(float a, float b)
         public static Dictionary<string, MSTSWagon> LoadedCars = new Dictionary<string, MSTSWagon>();
     }
 
-    public struct ParticleEmitterData
+    public class ParticleEmitterData
     {
-        public readonly Vector3 XNALocation;
-        public readonly Vector3 XNADirection;
-        public readonly float NozzleWidth;
+        public Vector3 PositionM;
+        public Vector3 PositionVariationM = Vector3.Zero;
+
+        public Vector3 InitialVelocityFactor; // Note: Not a measure of the initial velocity, actually just a multiplication factor
+        public Vector3 InitialVelocityVariationFactor = new Vector3(0.1f); // Randomization of initial velocity is relative to initial speed
+
+        public Vector3 FinalVelocityMpS = Vector3.Up; // Default final velocity is 1 m/s upward
+        public Vector3 FinalVelocityVariationMpS = new Vector3(0.75f);
+
+        public float NozzleDiameterM = 0.1f;
+        public float NozzleAreaM2 = -1; // If left at -1, will be initialized later
+
+        public float RateFactor = 1.0f;
+        public float LifetimeFactor = 1.0f;
+        public float LifetimeVariationFactor = 0.5f;
+        public float SettlingFactor = 1.0f;
+        public float SettlingVariationFactor = 0.1f;
+        public float ExpansionSpeed = 4.0f;
+        public float InitialExpansionFactor = 1.0f;
+
+        public float RotationVariation = 0.25f;
+
+        public float WindEffect = 1.0f;
+        public int MaxParticles = 2500;
+
+        public bool ChaoticRandomization = false; // Changes the style of RNG used for particle motion
+
+        public float Opacity = 1.0f;
+        public string Graphic;
+        public int AtlasWidth = 4;
+        public int AtlasHeight = 4;
 
         public ParticleEmitterData(STFReader stf)
         {
             stf.MustMatch("(");
-            XNALocation.X = stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
-            XNALocation.Y = stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
-            XNALocation.Z = -stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
-            XNADirection.X = stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
-            XNADirection.Y = stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
-            XNADirection.Z = -stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
-            XNADirection.Normalize();
-            NozzleWidth = stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
-            stf.SkipRestOfBlock();
+            // See if the first value is a number, if it isn't then skip parsing MSTS syntax
+            if (float.TryParse(stf.ReadItem(), out _))
+            {
+                stf.StepBackOneItem();
+                PositionM = stf.ReadVector3(STFReader.UNITS.Distance, Vector3.Zero);
+                PositionM.Z *= -1; // Convert to MSTS coordinate system
+                InitialVelocityFactor = stf.ReadVector3(STFReader.UNITS.Distance, Vector3.Zero);
+                InitialVelocityFactor.Z *= -1; // Convert to MSTS coordinate system
+                NozzleDiameterM = stf.ReadFloat(STFReader.UNITS.Distance, 0.0f);
+            }
+            else
+                stf.StepBackOneItem();
+            // Parse new parameters after all MSTS parameters, otherwise it's ambiguous which data is which
+            stf.ParseBlock(new STFReader.TokenProcessor[] {
+                new STFReader.TokenProcessor("ortsposition", ()=>{
+                    PositionM = stf.ReadVector3Block(STFReader.UNITS.Distance, Vector3.Zero);
+                    PositionM.Z *= -1; // Convert to MSTS coordinate system
+                }),
+                new STFReader.TokenProcessor("ortspositionvariation", ()=>{
+                    stf.MustMatch("(");
+                    PositionVariationM.X = stf.ReadFloat(STFReader.UNITS.Distance, 0);
+                    if (!stf.EndOfBlock()) // User has entered a 3-d vector
+                    {
+                        PositionVariationM.Y = stf.ReadFloat(STFReader.UNITS.Distance, 0);
+                        PositionVariationM.Z = stf.ReadFloat(STFReader.UNITS.Distance, 0);
+                        stf.SkipRestOfBlock();
+                    }
+                    else // User has entered a single value, set all vector components equal to this value
+                    {
+                        PositionVariationM.Z = PositionVariationM.Y = PositionVariationM.X;
+                    }
+                }),
+                new STFReader.TokenProcessor("ortsinitialvelocity", ()=>{
+                    InitialVelocityFactor = stf.ReadVector3Block(STFReader.UNITS.Speed, Vector3.Zero);
+                    InitialVelocityFactor.Z *= -1; // Convert to MSTS coordinate system
+                }),
+                new STFReader.TokenProcessor("ortsinitialvelocityvariation", ()=>{
+                    stf.MustMatch("(");
+                    InitialVelocityVariationFactor.X = stf.ReadFloat(STFReader.UNITS.None, 0);
+                    if (!stf.EndOfBlock()) // User has entered a 3-d vector
+                    {
+                        InitialVelocityVariationFactor.Y = stf.ReadFloat(STFReader.UNITS.None, 0);
+                        InitialVelocityVariationFactor.Z = stf.ReadFloat(STFReader.UNITS.None, 0);
+                        stf.SkipRestOfBlock();
+                    }
+                    else // User has entered a single value, set all vector components equal to this value
+                    {
+                        InitialVelocityVariationFactor.Z = InitialVelocityVariationFactor.Y = InitialVelocityVariationFactor.X;
+                    }
+                }),
+                new STFReader.TokenProcessor("ortsfinalvelocity", ()=>{
+                    FinalVelocityMpS = stf.ReadVector3Block(STFReader.UNITS.Speed, Vector3.Zero);
+                    FinalVelocityMpS.Z *= -1; // Convert to MSTS coordinate system
+                }),
+                new STFReader.TokenProcessor("ortsfinalvelocityvariation", ()=>{
+                    stf.MustMatch("(");
+                    FinalVelocityVariationMpS.X = stf.ReadFloat(STFReader.UNITS.Speed, 0);
+                    if (!stf.EndOfBlock()) // User has entered a 3-d vector
+                    {
+                        FinalVelocityVariationMpS.Y = stf.ReadFloat(STFReader.UNITS.Speed, 0);
+                        FinalVelocityVariationMpS.Z = stf.ReadFloat(STFReader.UNITS.Speed, 0);
+                        stf.SkipRestOfBlock();
+                    }
+                    else // User has entered a single value, set all vector components equal to this value
+                    {
+                        FinalVelocityVariationMpS.Z = FinalVelocityVariationMpS.Y = FinalVelocityVariationMpS.X;
+                    }
+                }),
+                new STFReader.TokenProcessor("ortsparticlediameter", ()=>{ NozzleDiameterM = stf.ReadFloatBlock(STFReader.UNITS.Distance, null); }),
+                new STFReader.TokenProcessor("ortslifespanmultiplier", ()=>{ LifetimeFactor = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortslifespanvariation", ()=>{ LifetimeVariationFactor = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortsmomentummultiplier", ()=>{ SettlingFactor = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortsmomentumvariation", ()=>{ SettlingVariationFactor = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortswindmultiplier", ()=>{ WindEffect = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortsinititalexpansion", ()=>{ InitialExpansionFactor = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortsexpansionspeed", ()=>{ ExpansionSpeed = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortsrotationvariation", ()=>{ RotationVariation = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortspipearea", ()=>{ NozzleAreaM2 = stf.ReadFloatBlock(STFReader.UNITS.AreaDefaultFT2, null); }),
+                new STFReader.TokenProcessor("ortsmaxparticles", ()=>{ MaxParticles = stf.ReadIntBlock(null); }),
+                new STFReader.TokenProcessor("ortsratemultiplier", ()=>{ RateFactor = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortsparticleopacity", ()=>{ Opacity = stf.ReadFloatBlock(STFReader.UNITS.None, null); }),
+                new STFReader.TokenProcessor("ortsusechaoticrandomization", ()=>{ ChaoticRandomization = stf.ReadBoolBlock(true); }),
+                new STFReader.TokenProcessor("ortsgraphic", ()=>{ Graphic = stf.ReadStringBlock(null); }),
+                new STFReader.TokenProcessor("ortsgraphicatlaslayout", ()=>{
+                    stf.MustMatch("(");
+                    AtlasWidth = Math.Max(stf.ReadInt(null), 1);
+                    AtlasHeight = Math.Max(stf.ReadInt(null), 1);
+                    stf.SkipRestOfBlock();
+                }),
+            });
         }
     }
 }
