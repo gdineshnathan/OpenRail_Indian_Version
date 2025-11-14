@@ -16800,6 +16800,22 @@ namespace Orts.Simulation.Physics
         }
 
         /// <summary>
+        /// SetMirror
+        /// Sets status of mirror of a locomotive
+        /// </summary>
+        public void setMirror(bool open)
+        {
+            foreach (TrainCar car in Cars)
+            {
+                var mstsWagon = car as MSTSWagon;
+                if (car is MSTSLocomotive)
+                {
+                    var loco = car as MSTSLocomotive;
+                    loco.setMirror(open);
+                }
+            }
+        }
+        /// <summary>
         /// SetDoors
         /// Sets status of doors of a train
         /// </summary>

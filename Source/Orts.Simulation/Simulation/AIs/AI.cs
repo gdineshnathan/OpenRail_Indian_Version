@@ -123,7 +123,7 @@ namespace Orts.Simulation.AIs
                     train.TrainType = Train.TRAINTYPE.AI_NOTSTARTED;
                     train.AI = this;
 
-                    if (train.Cars.Count > 0) train.Cars[0].Headlight = 2; // AI train always has light on
+                    if (train.Cars.Count > 0) train.Cars[0].Headlight = 0; // AI train always has light on
                     train.BrakeLine3PressurePSI = 0;
 
                     // Insert in start list
@@ -984,13 +984,21 @@ namespace Orts.Simulation.AIs
                             }
                         }
 
-                        if (train.InitialSpeed != 0 && car is MSTSLocomotive loco)
+                        if (train.InitialSpeed != 0 && car is MSTSLocomotive loco) { 
                             loco.SetPower(true);
+                        }
                     }
                     else
                     {
                         if (car is MSTSLocomotive loco)
+                        {
                             loco.SetPower(true);
+                            loco.SignalEvent(Common.Event._HeadlightOff);
+                            //loco.ToggleMirrors();
+                            loco.setMirror(true);
+                            loco.Headlight = 0;
+                            loco.LeftDoor.SetDoor(true);
+                        }
 
                         car.CarID = "AI" + train.Number.ToString() + " - " + (train.Cars.Count - 1).ToString();
                     }
@@ -1011,7 +1019,7 @@ namespace Orts.Simulation.AIs
                 return null;
             }
 
-            train.Cars[0].Headlight = 2; // AI train always has light on
+            train.Cars[0].Headlight = 0; // AI train always has light on
 
             // Patch placingproblem JeroenP (1 line)
             train.RearTDBTraveller = new Traveller(Simulator.TSectionDat, Simulator.TDB.TrackDB.TrackNodes, aiPath); // Create traveller

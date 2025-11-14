@@ -274,6 +274,7 @@ namespace Orts.Simulation.AIs
                     }
                 }
             }
+            setMirror(true);
             var doesLevelCrossingPatternExist = inf.ReadInt32();
             if (doesLevelCrossingPatternExist == 0)
                 LevelCrossingHornPattern = AILevelCrossingHornPattern.Restore(inf);
@@ -1542,7 +1543,6 @@ namespace Orts.Simulation.AIs
                     }
                 }
                 PowerState = true;
-
                 PostInit();
                 return;
             }

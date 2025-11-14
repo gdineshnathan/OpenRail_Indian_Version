@@ -3915,6 +3915,14 @@ namespace Orts.Simulation.RollingStocks
             if (Simulator.PlayerLocomotive == this) Simulator.Confirmer.Confirm(CabControl.Mirror, MirrorOpen ? CabSetting.On : CabSetting.Off);
         }
 
+        public void setMirror(bool open)
+        {
+            MirrorOpen = open;
+            if (MirrorOpen) SignalEvent(Event.MirrorOpen); // hook for sound trigger
+            else SignalEvent(Event.MirrorClose);
+            if (Simulator.PlayerLocomotive == this) Simulator.Confirmer.Confirm(CabControl.Mirror, MirrorOpen ? CabSetting.On : CabSetting.Off);
+        }
+
         public void ToggleWindow(bool rear, bool left)
         {
             var open = false;
@@ -3930,7 +3938,6 @@ namespace Orts.Simulation.RollingStocks
             else SignalEvent(Event.WindowClosing);
             if (Simulator.PlayerLocomotive == this) Simulator.Confirmer.Confirm(left ^ rear ? CabControl.WindowLeft : CabControl.WindowRight, open ? CabSetting.On : CabSetting.Off);
         }
-
         public void FindControlActiveLocomotive()
         {
             // Find the active locomotive associated with a control car
