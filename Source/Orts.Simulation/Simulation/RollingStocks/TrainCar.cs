@@ -2938,7 +2938,8 @@ public string GetCurveDirection()
 
                 // Make sure the axles are sorted by OffsetM along the car.
                 // Attempting to sort car w/o WheelAxles will resort to an error.
-                WheelAxles.Sort(WheelAxles[0]);
+                if (WheelAxles.Count > 0)
+                    WheelAxles.Sort(WheelAxles[0]);
             }
 
             //fix bogies with only one wheel set:
