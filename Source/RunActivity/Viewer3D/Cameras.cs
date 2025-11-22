@@ -1105,12 +1105,7 @@ namespace Orts.Viewer3D
                 Viewer.FirstLoop = false;
                 if (Front)
                 {
-                    var carPos = 0;
-                    if (Viewer.CameraOutsideFrontPosition > trainCars.Count - 1)
-                        carPos = trainCars.Count - 1;
-                    else if (Viewer.CameraOutsideFrontPosition >= 0)
-                        carPos = Viewer.CameraOutsideFrontPosition;
-                    SetCameraCar(trainCars[carPos]);
+                    SetCameraCar(trainCars[Viewer.CameraOutsideFrontPosition]);
                     Viewer.CameraFrontUpdated = true;
                 }
                 else
@@ -1135,7 +1130,7 @@ namespace Orts.Viewer3D
                 Viewer.IsCameraPositionUpdated = Viewer.CameraFrontUpdated && Viewer.CameraRearUpdated;
             }
 
-            if (attachedCar == null || attachedCar.Train != Viewer.SelectedTrain && !cameraFollowCutCar || carPosition != oldCarPosition)
+            if (attachedCar == null || attachedCar.Train != Viewer.SelectedTrain || carPosition != oldCarPosition)
             {
                 if (Front)
                 {
@@ -1183,7 +1178,7 @@ namespace Orts.Viewer3D
                 }
                 BrowseDistance = attachedCar.CarLengthM * 0.5f;
             }
-            base.OnActivate(sameCamera, cameraFollowCutCar);
+            base.OnActivate(sameCamera);
             CameraOutsidePosition();
         }
 
