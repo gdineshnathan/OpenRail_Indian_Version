@@ -96,7 +96,7 @@ namespace Orts.Viewer3D.Processes
             uint sleepCount = 0;
             while (true)
             {
-                Thread.Sleep(SleepTime);
+                State.Sleep(SleepTime);
                 if (State.Terminated)
                     break;
                 if (sleepCount % DoHostInterval == 0)
