@@ -173,12 +173,6 @@ namespace Orts.Viewer3D.Popups
             outf.Write(Location.Width);
             outf.Write(Location.Height);
 
-            // rwf-rr: temporary fix for bug 2121985
-            if (CarPosition >= Owner.Viewer.PlayerTrain.Cars.Count)
-            {
-                Trace.TraceWarning("TrainCarOperationsViewerWindow.CarPosition {0} out of range [0..{1}]", CarPosition, Owner.Viewer.PlayerTrain.Cars.Count - 1);
-                CarPosition = Owner.Viewer.PlayerTrain.Cars.Count - 1;
-            }
             outf.Write(CarPosition);
             outf.Write(ResetAllSymbols);
         }
